@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="NCKU NEAT LAB" />
+    <meta name="author" content="Terry Wei" />
+    <title>NCKU NEAT LAB</title>
+    
+    <!-- Bootstrap core CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- Font Awesome icons (free version) -->
+    <script src="https://use.fontawesome.com/releases/v5.15.3/js/all.js" crossorigin="anonymous"></script>
+    
+    <!-- Google fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet" />
+    
+    <!-- 你的自定义样式 (若有) -->
+    <link href="{{ url_for('static', filename='dist/css/styles.css') }}" rel="stylesheet" />
+
+    <!-- ECharts + liquidfill 插件 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-liquidfill/dist/echarts-liquidfill.min.js"></script>
+
+    <!-- Chart.js (温湿度仪表) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      /* 通用样式 */
+      body {
+        font-family: sans-serif;
+      }
+
+      /* 调整导航栏样式可选 */
+      #mainNav .navbar-brand {
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      /* 仪表容器 */
+      .gauge-container {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .value-label {
+        position: relative;
+        top: -150px; 
+        font-size: 1.5rem;
+        font-weight: bold;
+      }
+
+      /* 水位图容器 */
+      #liquidChart {
+        width: 300px;
+        height: 300px;
+        margin: 0 auto; /* 让它居中 */
+      }
+    </style>
+  </head>
+  <body id="page-top" class="bg-light">
+    <!-- Navigation-->
+      <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top" id="mainNav">
+        <div class="container">
+          <a class="navbar-brand" href="{{ url_for('index') }}">
+            <img src="{{ url_for('static', filename='dist/assets/img/333.png') }}" alt="Logo" width="30" height="30" class="d-inline-block align-top">
+            NEAT LAB
+          </a>
+        </div>
+      </nav>
+    <!-- Panorama Generation Section -->
+    <section class="about-section text-center" id="Panorama">
+        <div class="container mt-5">
+          <h1 class="text-center" style="color: #F7A004;">Panorama Generation</h1>
+          <p class="text-center" style="color: red;">只限上傳 mp4 的影片</p>
+          <form id="uploadForm" class="text-center" enctype="multipart/form-data">
+            <!--<input type="file" class="form-control my-3" name="file" accept="video/mp4" required />-->
+            <input type="file" class="form-control my-3" name="file" accept="image/*,video/mp4,video/mov" multiple required />
+            <button type="submit" class="btn btn-primary">Upload and Generate Panorama</button>
+          </form>
+          <div id="loading" class="text-center my-3" style="display: none;">
+            <p>Processing... Please wait.</p>
+          </div>
+          <div id="result" class="text-center mt-3">
+            <div class="d-flex justify-content-center align-items-center">
+              <video id="resultVideo" controls style="max-width: 100%; display: none;"></video>
+              <img id="resultImage" style="max-width: 100%; display: none;" />
+            </div>
+            <p id="detectResult"></p>
+            <a id="downloadLink" class="btn btn-success mt-3" style="display: none;">Download Panorama</a>
+          </div>
+        </div>
+      </section> 
+  
+      <script>
+        const form = document.querySelector('#uploadForm');
+        form.onsubmit = async function (event) {
+          event.preventDefault(); // 阻止默认提交行为
+      
+          const loading = document.getElementById('loading');
+          const resultVideo = document.getElementById('resultVideo');
+          const resultImage = document.getElementById('resultImage');
+          const downloadLink = document.getElementById('downloadLink');
+      
+          // 显示加载状态，隐藏之前的结果
+          loading.style.display = 'block';
+          resultVideo.style.display = 'none';
+          resultImage.style.display = 'none';
+          downloadLink.style.display = 'none';
+      
+          let formData = new FormData(form);
+      
+          try {
+            // 发送请求到 /uploadvideo_to_panorama 接口（后台将视频转换为全景图）
+            //let response = await fetch('/uploadvideo_to_panorama', {
+              let response = await fetch('/predict_p', {
+              method: 'POST',
+              body: formData
+            });
+      
+            loading.style.display = 'none';
+      
+            if (!response.ok) {
+              let errorText = await response.text();
+              alert('Error: ' + errorText);
+              return;
+            }
+      
+            let blob = await response.blob();
+            let contentType = response.headers.get('Content-Type');
+            let resultURL = URL.createObjectURL(blob);
+      
+            // 根据返回的内容类型判断显示图片或视频
+            if (contentType.includes('image')) {
+              resultImage.src = resultURL;
+              resultImage.style.display = 'block';
+            } else if (contentType.includes('video')) {
+              resultVideo.src = resultURL;
+              resultVideo.style.display = 'block';
+            }
+      
+            downloadLink.href = resultURL;
+            downloadLink.download = contentType.includes('video') ? 'processed_video.mp4' : 'panorama.jpg';
+            downloadLink.style.display = 'block';
+            
+            // **确保 `/predict` 处理完成后，再请求 `/result`**
+            let response2 = await fetch('/result', {
+                method: 'POST'
+            });
+    
+            if (response2.ok) {
+                let res = await response2.json();
+                detectResult.textContent = res;
+                detectResult.style.display = 'block';
+                detectResult.style.backgroundColor = 'pink';
+                detectResult.style.marginTop = '20px';
+            } else {
+                let errorText = await response2.text();
+                alert('Error: ' + errorText);
+            }
+          } catch (err) {
+            alert('Error: ' + err.message);
+            loading.style.display = 'none';
+          }
+        };
+      </script>
+      
+      <!-- Footer-->
+      <footer class="footer bg-black small text-center text-white-50 py-3">
+        <div class="container">
+          Copyright &copy; NEAT LAB Website 2024, Terry Wei
+        </div>
+      </footer>
+  
+      <!-- Bootstrap core JS-->
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+      <!-- 你可能需要的自定义 JS -->
+      <script src="{{ url_for('static', filename='dist/js/scripts.js') }}"></script>
+    </body>
+</html>

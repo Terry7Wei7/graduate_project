@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="NCKU NEAT LAB" />
+    <meta name="author" content="Terry Wei" />
+    <title>NCKU NEAT LAB</title>
+    
+    <!-- Bootstrap core CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- Font Awesome icons (free version) -->
+    <script src="https://use.fontawesome.com/releases/v5.15.3/js/all.js" crossorigin="anonymous"></script>
+    
+    <!-- Google fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet" />
+    
+    <!-- 你的自定义样式 (若有) -->
+    <link href="{{ url_for('static', filename='dist/css/styles.css') }}" rel="stylesheet" />
+
+    <!-- ECharts + liquidfill 插件 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-liquidfill/dist/echarts-liquidfill.min.js"></script>
+
+    <!-- Chart.js (温湿度仪表) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      /* 通用样式 */
+      body {
+        font-family: sans-serif;
+      }
+
+      /* 调整导航栏样式可选 */
+      #mainNav .navbar-brand {
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      /* 仪表容器 */
+      .gauge-container {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .value-label {
+        position: relative;
+        top: -150px; 
+        font-size: 1.5rem;
+        font-weight: bold;
+      }
+
+      /* 水位图容器 */
+      #liquidChart {
+        width: 300px;
+        height: 300px;
+        margin: 0 auto; /* 让它居中 */
+      }
+    </style>
+  </head>
+  <body id="page-top" class="bg-light">
+    <!-- Navigation-->
+      <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top" id="mainNav">
+        <div class="container">
+          <a class="navbar-brand" href="{{ url_for('index') }}">
+            <img src="{{ url_for('static', filename='dist/assets/img/333.png') }}" alt="Logo" width="30" height="30" class="d-inline-block align-top">
+            NEAT LAB
+          </a>
+        </div>
+      </nav>
+      
+    <!-- CCTV / Camera Streams Section -->
+    <section class="py-5 mt-5 bg-black text-white-50" id="cctv">
+      <div class="container">
+        <div class="row">
+          <!-- 每行两列，md-6 表示在中等及以上屏幕分两列，小屏幕会自动堆叠 -->
+          <div class="col-md-6 text-center mb-4">
+            <h2 class="mb-3">CCTV Live Stream</h2>
+            <img src="{{ url_for('video_feed3') }}" class="img-fluid" alt="CCTV Live Stream" />
+          </div>
+          <div class="col-md-6 text-center mb-4">
+            <h2 class="mb-3">WEBCAM Live Stream</h2>
+            <img src="{{ url_for('webcam_feed') }}" class="img-fluid" alt="WEBCAM Live Stream" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-6 text-center mb-4">
+            <h2 class="mb-3">PICAM2 Live Stream</h2>
+            <img src="{{ url_for('picam_feed2') }}" class="img-fluid" alt="PICAM2 Live Stream" />
+          </div>
+          <div class="col-md-6 text-center mb-4">
+            <h2 class="mb-3">annan CCTV Stream1</h2>
+            <img src="{{ url_for('video_feed1') }}" class="img-fluid" alt="annan CCTV Stream1" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-6 text-center mb-4">
+            <h2 class="mb-3">annan CCTV Stream2</h2>
+            <img src="{{ url_for('video_feed2') }}" class="img-fluid" alt="annan CCTV Stream2" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Nodered: 温湿度 + 水位图 Section -->
+    <section class="py-5">
+      <div class="container">
+        <div class="row">
+          <!-- 左侧：温湿度仪表 -->
+          <div class="col-md-6">
+            <h2 class="text-center mb-4">NEAT LAB 溫濕度</h2>
+            <div class="d-flex flex-wrap justify-content-center">
+              <!-- 温度仪表 -->
+              <div class="gauge-container">
+                <canvas id="tempGauge"></canvas>
+                <div class="value-label" id="tempValue">-- °C</div>
+              </div>
+              <!-- 湿度仪表 -->
+              <div class="gauge-container">
+                <canvas id="humiGauge"></canvas>
+                <div class="value-label" id="humiValue">-- %</div>
+              </div>
+            </div>
+          </div>
+          <!-- 右侧：水位图 -->
+          <div class="col-md-6">
+            <h2 class="text-center mb-4">水位</h2>
+            <div id="liquidChart"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer-->
+    <footer class="footer bg-black small text-center text-white-50 py-3">
+      <div class="container">
+        Copyright &copy; NEAT LAB Website 2024, Terry Wei
+      </div>
+    </footer>
+
+    <!-- Bootstrap core JS-->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 你可能需要的自定义 JS -->
+    <script src="{{ url_for('static', filename='dist/js/scripts.js') }}"></script>
+
+    <!-- ============== Chart.js for Temperature & Humidity ============== -->
+    <script>
+      // 1) 温度仪表
+      const tempCtx = document.getElementById("tempGauge").getContext("2d");
+      const tempGaugeChart = new Chart(tempCtx, {
+        type: "doughnut",
+        data: {
+          labels: ["Temp", "Remainder"],
+          datasets: [
+            {
+              data: [0, 40],
+              backgroundColor: ["#fbc02d", "#e0e0e0"],
+              borderWidth: 0,
+            },
+          ],
+        },
+        options: {
+          rotation: -90,
+          circumference: 180,
+          cutout: "70%",
+          plugins: {
+            legend: { display: false },
+          },
+        },
+      });
+
+      // 2) 湿度仪表
+      const humiCtx = document.getElementById("humiGauge").getContext("2d");
+      const humiGaugeChart = new Chart(humiCtx, {
+        type: "doughnut",
+        data: {
+          labels: ["Humidity", "Remainder"],
+          datasets: [
+            {
+              data: [0, 100],
+              backgroundColor: ["#29b6f6", "#e0e0e0"],
+              borderWidth: 0,
+            },
+          ],
+        },
+        options: {
+          rotation: -90,
+          circumference: 180,
+          cutout: "70%",
+          plugins: {
+            legend: { display: false },
+          },
+        },
+      });
+
+      // 定时获取 Node-RED 数据
+      async function fetchSensorData() {
+        try {
+          let response = await fetch("http://127.0.0.1:1880/sensor");
+          if (!response.ok) {
+            throw new Error("HTTP error " + response.status);
+          }
+          let data = await response.json();
+          // data = { local_temperature: 23, local_humidity: 49, ... }
+          console.log("Sensor Data:", data);
+
+          // 温度
+          let tempValue = data.local_temperature || 0;
+          if (tempValue < 0) tempValue = 0;
+          if (tempValue > 40) tempValue = 40;
+          tempGaugeChart.data.datasets[0].data = [tempValue, 40 - tempValue];
+          tempGaugeChart.update();
+          document.getElementById("tempValue").innerText = `${tempValue} °C`;
+
+          // 湿度
+          let humiValue = data.local_humidity || 0;
+          if (humiValue < 0) humiValue = 0;
+          if (humiValue > 100) humiValue = 100;
+          humiGaugeChart.data.datasets[0].data = [humiValue, 100 - humiValue];
+          humiGaugeChart.update();
+          document.getElementById("humiValue").innerText = `${humiValue} %`;
+        } catch (err) {
+          console.error("Failed to fetch sensor data:", err);
+        }
+      }
+
+      // 页面加载后先调用一次，并每秒刷新
+      window.onload = () => {
+        fetchSensorData();
+        setInterval(fetchSensorData, 1000);
+      };
+    </script>
+
+    <!-- ============== ECharts LiquidFill for 水位图 ============== -->
+    <script>
+      var dom = document.getElementById('liquidChart');
+      var myChart = echarts.init(dom);
+      var option = {
+        series: [{
+          type: 'liquidFill',
+          data: [0.45],
+          color: ['#4C9BFB'],
+          center: ['50%', '50%'],
+          radius: '80%',
+          outline: {
+            show: true,
+            borderDistance: 0,
+            itemStyle: {
+              borderWidth: 2,
+              borderColor: '#4C9BFB',
+            }
+          },
+          backgroundStyle: {
+            color: '#fff'
+          },
+          label: {
+            formatter: function() {
+              return (0.45 * 100).toFixed(0) + '%';
+            },
+            fontSize: 20,
+            color: '#333'
+          },
+          amplitude: 8,
+          waveLength: '80%',
+          waveAnimation: true,
+        }]
+      };
+      myChart.setOption(option);
+
+      async function fetchDataAndUpdate() {
+        try {
+          let newValue = 0.45; // 假设固定 45%
+          // let response = await fetch('你的后端API');
+          // let data = await response.json();
+          // newValue = data.level / 100;
+
+          myChart.setOption({
+            series: [{
+              data: [newValue],
+              label: {
+                formatter: function() {
+                  return (newValue * 100).toFixed(0) + '%';
+                }
+              }
+            }]
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      setInterval(fetchDataAndUpdate, 1000);
+    </script>
+  </body>
+</html>

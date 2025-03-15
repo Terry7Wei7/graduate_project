@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>NCKU NEAT LAB</title>
+        <!-- 引入 chart 核心库 -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <!-- 溫濕度 -->
+        <style>
+            body {
+              font-family: sans-serif;
+              margin: 20px;
+            }
+            .gauge-container {
+              display: inline-block;
+              width: 300px;
+              margin: 20px;
+              text-align: center;
+            }
+            canvas {
+              max-width: 100%;
+            }
+            .value-label {
+              position: relative;
+              top: -150px; /* 视情况调整，让数字居中 */
+              font-size: 2em;
+              font-weight: bold;
+            }
+          </style>
+        <!-- 引入 ECharts 核心库 -->
+        <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+        <!-- 引入 liquidfill 插件 -->
+        <script src="https://cdn.jsdelivr.net/npm/echarts-liquidfill/dist/echarts-liquidfill.min.js"></script>
+        <style>
+            #liquidChart {
+            width: 600px;   /* 宽度可自行调整 */
+            height: 600px;  /* 高度可自行调整 */
+            margin: 60px auto;
+            }
+        </style>
+
+        <!-- favicon -->
+        <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='dist/assets/favicon.ico') }}" />
+        
+        <!-- Font Awesome icons (free version) -->
+        <script src="https://use.fontawesome.com/releases/v5.15.3/js/all.js" crossorigin="anonymous"></script>
+        
+        <!-- Google fonts -->
+        <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet" />
+        
+        <!-- Core theme CSS (includes Bootstrap) -->
+        <link href="{{ url_for('static', filename='dist/css/styles.css') }}" rel="stylesheet" />
+    </head>
+    <body id="page-top">
+        <!-- Navigation-->
+        <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
+            <div class="container px-4 px-lg-5">
+                <a class="navbar-brand" href="#page-top">Start Bootstrap</a>
+                <button class="navbar-toggler navbar-toggler-right" type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#navbarResponsive"
+                        aria-controls="navbarResponsive"
+                        aria-expanded="false"
+                        aria-label="Toggle navigation">
+                    Menu
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarResponsive">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item"><a class="nav-link" href="#about">About</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#projects">Projects</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#signup">Contact</a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Masthead-->
+        <header class="masthead">
+            <div class="container px-4 px-lg-5 d-flex h-100 align-items-center justify-content-center">
+                <div class="d-flex justify-content-center">
+                    <div class="text-center">
+                        <h1 class="mx-auto my-0 text-uppercase">BIRD DETECTION</h1>
+                        <h2 class="text-white-50 mx-auto mt-2 mb-5">
+                            A free, responsive, website created by NEAT LAB.
+                        </h2>
+                        <a class="btn btn-primary" href="#about">Get Started</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <!-- yolov8 detection-->
+        <section class="about-section text-center" id="about">
+            <div class="container mt-5">
+                <h1 class="text-center"><font color="#F7A004">YOLOv8 Object Detection</font></h1>
+                <p style="text-align: center; color: red">只限上傳 mp4 的影片或圖片</p>
+                <form id="uploadForm" class="text-center" enctype="multipart/form-data">
+                    <input type="file" class="form-control my-3" name="file" accept="image/*,video/mp4" required />
+                    <button type="submit" class="btn btn-primary">Upload and Predict</button>
+                </form>
+                <div id="loading" class="text-center my-3" style="display: none;">
+                    <p>Processing... Please wait.</p>
+                </div>
+                <div id="result" class="text-center mt-3">
+                    <div style="display: flex; justify-content: center; align-items: center;">
+                        <video id="resultVideo" controls style="max-width: 100%; display: none;"></video>
+                        <img id="resultImage" style="max-width: 100%; display: none;" />
+                    </div>
+                    <p id="detectResult"></p>
+                    <a id="downloadLink" class="btn btn-success mt-3" style="display: none;">Download Result</a>
+                </div>
+            </div>
+        </section>    
+        <script>
+            const form = document.querySelector('#uploadForm');
+            form.onsubmit = async function (event) {
+                event.preventDefault(); // 阻止默認提交行為
+    
+                const loading = document.getElementById('loading');
+                const resultVideo = document.getElementById('resultVideo');
+                const resultImage = document.getElementById('resultImage');
+                const detectResult = document.getElementById('detectResult');
+                const downloadLink = document.getElementById('downloadLink');
+    
+                // **显示加载状态**
+                loading.style.display = 'block';
+                resultVideo.style.display = 'none';
+                resultImage.style.display = 'none';
+                detectResult.style.display = 'none';
+                downloadLink.style.display = 'none';
+    
+                let formData = new FormData(form);
+    
+                try {
+                    // **先发送 `/predict` 请求**
+                    let response = await fetch('/predict', {
+                        method: 'POST',
+                        body: formData
+                    });
+    
+                    // **等待 YOLOv8 处理完成**
+                    loading.style.display = 'none';
+    
+                    if (!response.ok) {
+                        let errorText = await response.text();
+                        alert('Error: ' + errorText);
+                        return;
+                    }
+    
+                    let blob = await response.blob();
+                    let contentType = response.headers.get('Content-Type');
+                    let resultURL = URL.createObjectURL(blob);
+    
+                    // **判断返回类型**
+                    if (contentType.includes('video')) {
+                        resultVideo.src = resultURL;
+                        resultVideo.style.display = 'block';
+                    } else if (contentType.includes('image')) {
+                        resultImage.src = resultURL;
+                        resultImage.style.display = 'block';
+                    }
+    
+                    downloadLink.href = resultURL;
+                    downloadLink.download = contentType.includes('video') ? 'processed_video.mp4' : 'processed_image.jpg';
+                    downloadLink.style.display = 'block';
+    
+                    // **确保 `/predict` 处理完成后，再请求 `/result`**
+                    let response2 = await fetch('/result', {
+                        method: 'POST'
+                    });
+    
+                    if (response2.ok) {
+                        let res = await response2.json();
+                        detectResult.textContent = res;
+                        detectResult.style.display = 'block';
+                        detectResult.style.backgroundColor = 'pink';
+                        detectResult.style.marginTop = '20px';
+                    } else {
+                        let errorText = await response2.text();
+                        alert('Error: ' + errorText);
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                    loading.style.display = 'none';
+                }
+            };
+        </script>
+        <!-- About-->
+        <section class="about-section text-center" id="aboutttt">
+            <div class="container px-4 px-lg-5">
+                <div class="row gx-4 gx-lg-5 justify-content-center">
+                    <div class="col-lg-8">
+                        <h2 class="text-white mb-4">Built with Bootstrap 5</h2>
+                        <p class="text-white-50">
+                            Grayscale is a free Bootstrap theme created by Start Bootstrap.
+                            It can be yours right now, simply download the template on
+                            <a href="https://startbootstrap.com/theme/grayscale/">the preview page.</a>
+                            The theme is open source, and you can use it for any purpose, personal or commercial.
+                        </p>
+                    </div>
+                </div>
+                <img class="img-fluid" src="{{ url_for('static', filename='dist/assets/img/ipad.png') }}" alt="..." />
+            </div>
+        </section>
+        
+        <!-- Projects-->
+        <section class="projects-section bg-light" id="projects">
+            <div class="container px-4 px-lg-5">
+                <!-- Featured Project Row-->
+                <div class="row gx-0 mb-4 mb-lg-5 align-items-center">
+                    <div class="col-xl-8 col-lg-7">
+                        <img class="img-fluid mb-3 mb-lg-0"
+                             src="{{ url_for('static', filename='dist/assets/img/66.jpg') }}"
+                             alt="..." />
+                    </div>
+                    <div class="col-xl-4 col-lg-5">
+                        <div class="featured-text text-center text-lg-left">
+                            <h4>Shoreline</h4>
+                            <p class="text-black-50 mb-0">
+                                Grayscale is open source and MIT licensed. This means you can use it for any project - even commercial projects!
+                                Download it, customize it, and publish your website!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Project One Row-->
+                <div class="row gx-0 mb-5 mb-lg-0 justify-content-center">
+                    <div class="col-lg-6">
+                        <img class="img-fluid"
+                             src="{{ url_for('static', filename='dist/assets/img/demo-image-01.jpg') }}"
+                             alt="..." />
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="bg-black text-center h-100 project">
+                            <div class="d-flex h-100">
+                                <div class="project-text w-100 my-auto text-center text-lg-left">
+                                    <h4 class="text-white">Misty</h4>
+                                    <p class="mb-0 text-white-50">
+                                        An example of where you can put an image of a project, or anything else, along with a description.
+                                    </p>
+                                    <hr class="d-none d-lg-block mb-0 ms-0" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Project Two Row-->
+                <div class="row gx-0 justify-content-center">
+                    <div class="col-lg-6">
+                        <img class="img-fluid"
+                             src="{{ url_for('static', filename='dist/assets/img/demo-image-02.jpg') }}"
+                             alt="..." />
+                    </div>
+                    <div class="col-lg-6 order-lg-first">
+                        <div class="bg-black text-center h-100 project">
+                            <div class="d-flex h-100">
+                                <div class="project-text w-100 my-auto text-center text-lg-right">
+                                    <h4 class="text-white">Mountains</h4>
+                                    <p class="mb-0 text-white-50">
+                                        Another example of a project with its respective description. 
+                                        These sections work well responsively as well, 
+                                        try this theme on a small screen!
+                                    </p>
+                                    <hr class="d-none d-lg-block mb-0 me-0" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!--nodered-->
+        <h1>NEAT LAB 溫濕度</h1>
+
+        <div class="gauge-container">
+          <canvas id="tempGauge"></canvas>
+          <div class="value-label" id="tempValue">-- °C</div>
+        </div>
+      
+        <div class="gauge-container">
+          <canvas id="humiGauge"></canvas>
+          <div class="value-label" id="humiValue">-- %</div>
+        </div>
+      
+        <script>
+          // ------------------ 1) 配置温度仪表 (0~40) ------------------
+          const tempCtx = document.getElementById("tempGauge").getContext("2d");
+          // 初始化时，设置 data = [当前值, 剩余值]；先假设初始值=0
+          const tempGaugeChart = new Chart(tempCtx, {
+            type: "doughnut",
+            data: {
+              labels: ["Temp", "Remainder"],
+              datasets: [
+                {
+                  data: [0, 40], // 前者=已用(当前温度)，后者=剩余(40 - 温度)
+                  backgroundColor: ["#fbc02d", "#e0e0e0"], // 黄色, 灰色
+                  borderWidth: 0,
+                },
+              ],
+            },
+            options: {
+              rotation: -90,       // 从正上方开始
+              circumference: 180,  // 只显示半圆(180°)
+              cutout: "70%",       // 中心空白部分(可根据需要调整)
+              plugins: {
+                legend: { display: false }, // 隐藏图例
+              },
+            },
+          });
+      
+          // ------------------ 2) 配置湿度仪表 (0~100) ------------------
+          const humiCtx = document.getElementById("humiGauge").getContext("2d");
+          const humiGaugeChart = new Chart(humiCtx, {
+            type: "doughnut",
+            data: {
+              labels: ["Humidity", "Remainder"],
+              datasets: [
+                {
+                  data: [0, 100],
+                  backgroundColor: ["#29b6f6", "#e0e0e0"], // 蓝色, 灰色
+                  borderWidth: 0,
+                },
+              ],
+            },
+            options: {
+              rotation: -90,
+              circumference: 180,
+              cutout: "70%",
+              plugins: {
+                legend: { display: false },
+              },
+            },
+          });
+      
+          // ------------------ 3) 从 Node-RED 获取数据并更新图表 ------------------
+          async function fetchSensorData() {
+            try {
+              const response = await fetch("http://127.0.0.1:1880/sensor");
+              if (!response.ok) {
+                throw new Error("HTTP error " + response.status);
+              }
+              const data = await response.json();
+              // 假设 data = { temperature: 23, humidity: 49 }
+              console.log("Sensor Data:", data);
+      
+              // 更新温度仪表
+              let tempValue = data.local_temperature || 0;
+              if (tempValue < 0) tempValue = 0;
+              if (tempValue > 40) tempValue = 40;
+              tempGaugeChart.data.datasets[0].data = [tempValue, 40 - tempValue];
+              tempGaugeChart.update();
+              // 更新数字显示
+              document.getElementById("tempValue").innerText = `${tempValue} °C`;
+      
+              // 更新湿度仪表
+              let humiValue = data.local_humidity || 0;
+              if (humiValue < 0) humiValue = 0;
+              if (humiValue > 100) humiValue = 100;
+              humiGaugeChart.data.datasets[0].data = [humiValue, 100 - humiValue];
+              humiGaugeChart.update();
+              // 更新数字显示
+              document.getElementById("humiValue").innerText = `${humiValue} %`;
+            } catch (err) {
+              console.error("Failed to fetch sensor data:", err);
+            }
+          }
+      
+          // 页面加载后先调用一次，并每5秒刷新一次
+          window.onload = () => {
+            fetchSensorData();
+            setInterval(fetchSensorData, 1000);
+          };
+        </script>
+        <!-- 水位-->
+        <h1>水位</h1>
+        <div id="liquidChart"></div>
+      
+        <script>
+          // 1) 获取 DOM 容器
+          var dom = document.getElementById('liquidChart');
+          var myChart = echarts.init(dom);
+      
+          // 2) 配置项
+          var option = {
+            series: [{
+              type: 'liquidFill',
+              // data: 里放 [0.45]，表示水位 45% (可放多个波浪 data)
+              data: [0.45],
+              color: ['#4C9BFB'],  // 波浪颜色
+              center: ['50%', '50%'],
+              radius: '80%',
+              outline: {
+                show: true,
+                borderDistance: 0,
+                itemStyle: {
+                  borderWidth: 2,
+                  borderColor: '#4C9BFB',
+                }
+              },
+              backgroundStyle: {
+                color: '#fff' // 背景色(容器内部)
+              },
+              label: {
+                // 中心文本
+                formatter: function() {
+                  return (0.45 * 100).toFixed(0) + '%';
+                },
+                fontSize: 20,
+                color: '#333'
+              },
+              amplitude: 8, // 波浪振幅，可自行调整
+              waveLength: '80%', // 波长
+              waveAnimation: true, // 开启动画
+            }]
+          };
+      
+          // 3) 设置配置并渲染
+          myChart.setOption(option);
+      
+          // ===============================
+          // 如果你想定时更新水位，比如每5秒从后端获取新值：
+          async function fetchDataAndUpdate() {
+            try {
+              // 这里示例用随机数模拟
+              let newValue = Math.random(); // 0~1 之间
+              // let response = await fetch('你的后端API');
+              // let data = await response.json();
+              // newValue = data.level / 100; // 假设返回的是百分比
+      
+              // 更新水位
+              myChart.setOption({
+                series: [{
+                  data: [newValue],
+                  label: {
+                    formatter: function() {
+                      return (newValue * 100).toFixed(0) + '%';
+                    }
+                  }
+                }]
+              });
+            } catch (err) {
+              console.error(err);
+            }
+          }
+      
+          // 每隔5秒自动刷新
+          setInterval(fetchDataAndUpdate, 1000);
+      
+        </script>
+        <!-- 新增: CCTV RTSP 區塊 -->
+        <section class="projects-section bg-dark" id="cctv">
+            <div class="container px-4 px-lg-5">
+                <div class="row gx-4 gx-lg-5 justify-content-center">
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td>
+                                <h2 class="mb-4">CCTV Live Stream</h2>
+                                <img src="{{ url_for('video_feed3') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td>
+                                <h2 class="mb-4">WEBCAM Live Stream</h2>
+                                <img src="{{ url_for('webcam_feed') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    <!--
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td>
+                                <h2 class="mb-4">PICAM Live Stream</h2>
+                                <img src="{{ url_for('picam_feed') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    -->
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td>
+                                <h2 class="mb-4">PICAM2 Live Stream</h2>
+                                <img src="{{ url_for('picam_feed2') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td colspan="2"></td>
+                                <h2 class="mb-4">annan CCTV Stream1</h2>
+                                <img src="{{ url_for('video_feed1') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td colspan="2">
+                                <h2 class="mb-4">annan CCTV Stream2</h2>
+                                <img src="{{ url_for('video_feed2') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    <!--
+                    <div class="col-lg-8 text-center text-white">
+                        <tr>
+                            <td colspan="2">
+                                <h2 class="mb-4">lab CCTV detect Stream2</h2>
+                                <img src="{{ url_for('video_detect_feed3') }}" width="640" height="480" />
+                            </td>
+                        </tr>        
+                    </div>
+                    -->
+                </div>
+            </div>
+        </section>
+        
+        <!-- Signup-->
+        <section class="signup-section" id="signup">
+            <div class="container px-4 px-lg-5">
+                <div class="row gx-4 gx-lg-5">
+                    <div class="col-md-10 col-lg-8 mx-auto text-center">
+                        <i class="far fa-paper-plane fa-2x mb-2 text-white"></i>
+                        <h2 class="text-white mb-5">Subscribe to receive updates!</h2>
+                        <form class="form-signup" id="contactForm" data-sb-form-api-token="API_TOKEN">
+                            <div class="row input-group-newsletter">
+                                <div class="col">
+                                    <input class="form-control"
+                                           id="emailAddress"
+                                           type="email"
+                                           placeholder="Enter email address..."
+                                           aria-label="Enter email address..."
+                                           data-sb-validations="required,email" />
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-primary disabled"
+                                            id="submitButton"
+                                            type="submit">
+                                        Notify Me!
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="invalid-feedback mt-2" data-sb-feedback="emailAddress:required">
+                                An email is required.
+                            </div>
+                            <div class="invalid-feedback mt-2" data-sb-feedback="emailAddress:email">
+                                Email is not valid.
+                            </div>
+                            
+                            <!-- success / error messages -->
+                            <div class="d-none" id="submitSuccessMessage">
+                                <div class="text-center mb-3 mt-2 text-white">
+                                    <div class="fw-bolder">Form submission successful!</div>
+                                    To activate this form, sign up at
+                                    <br />
+                                    <a href="https://startbootstrap.com/solution/contact-forms">https://startbootstrap.com/solution/contact-forms</a>
+                                </div>
+                            </div>
+                            <div class="d-none" id="submitErrorMessage">
+                                <div class="text-center text-danger mb-3 mt-2">Error sending message!</div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Contact-->
+        <section class="contact-section bg-black">
+            <div class="container px-4 px-lg-5">
+                <div class="row gx-4 gx-lg-5">
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <div class="card py-4 h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-map-marked-alt text-primary mb-2"></i>
+                                <h4 class="text-uppercase m-0">Address</h4>
+                                <hr class="my-4 mx-auto" />
+                                <div class="small text-black-50">4923 Market Street, Orlando FL</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <div class="card py-4 h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-envelope text-primary mb-2"></i>
+                                <h4 class="text-uppercase m-0">Email</h4>
+                                <hr class="my-4 mx-auto" />
+                                <div class="small text-black-50"><a href="#!">hello@yourdomain.com</a></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <div class="card py-4 h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-mobile-alt text-primary mb-2"></i>
+                                <h4 class="text-uppercase m-0">Phone</h4>
+                                <hr class="my-4 mx-auto" />
+                                <div class="small text-black-50">+1 (555) 902-8832</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="social d-flex justify-content-center">
+                    <a class="mx-2" href="#!"><i class="fab fa-twitter"></i></a>
+                    <a class="mx-2" href="#!"><i class="fab fa-facebook-f"></i></a>
+                    <a class="mx-2" href="#!"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Footer-->
+        <footer class="footer bg-black small text-center text-white-50">
+            <div class="container px-4 px-lg-5">
+                Copyright &copy; Your Website 2021
+            </div>
+        </footer>
+        
+        <!-- Bootstrap core JS-->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+        
+        <!-- Core theme JS-->
+        <script src="{{ url_for('static', filename='dist/js/scripts.js') }}"></script>
+        
+        <!-- SB Forms JS-->
+        <script src="https://cdn.startbootstrap.com/sb-forms-latest.js"></script>
+    </body>
+</html>
